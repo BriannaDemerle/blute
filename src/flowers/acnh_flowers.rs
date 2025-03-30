@@ -1,75 +1,90 @@
 use std::str::FromStr;
 
-use crate::flowers::flower::{Flower, FlowerData, Phenotype};
-use crate::genetics::{Genotype, MendelianGenotype};
-use crate::terminal::{AnsiColor, TextBlueprint};
+use crate::flowers::flower::{
+    ACNHFlowerType, Flower, FlowerContext, FlowerData, FlowerType, Phenotype,
+};
+use crate::genetics::{GeneType, Genotype};
 
-use super::flower::{ACNHFlower, FlowerContext, FlowerType};
+use crate::AnsiColor;
+use crate::terminal::TextBlueprint;
 
-pub struct ACNHRose {
-    genotype: MendelianGenotype
-}
-
-impl ACNHRose {
-    pub const GENOTYPE_LENGTH: u8 = 4;
-    pub const FLOWER_TYPE: FlowerType = FlowerType::ACNHFlowerType(ACNHFlower::Rose);
-
-    pub fn get_color(color_name: &str) -> Option<AnsiColor> {
-        match color_name {
-            "Red" => Some(AnsiColor::from_code(160)),
-            "White" => Some(AnsiColor::from_code(7)),
-            "Purple" => Some(AnsiColor::from_code(90)),
-            "Yellow" => Some(AnsiColor::from_code(221)),
-            "Pink" => Some(AnsiColor::from_code(211)),
-            "Orange" => Some(AnsiColor::from_code(208)),
-            "Black" => Some(AnsiColor::from_code(8)),
-            "Blue" => Some(AnsiColor::from_code(27)),
-            _ => None
-        }
+fn get_acnh_flower_color(color_name: &str) -> Option<AnsiColor> {
+    match color_name {
+        "Red" => Some(AnsiColor::from_code(160)),
+        "White" => Some(AnsiColor::from_code(7)),
+        "Purple" => Some(AnsiColor::from_code(90)),
+        "Yellow" => Some(AnsiColor::from_code(221)),
+        "Pink" => Some(AnsiColor::from_code(211)),
+        "Orange" => Some(AnsiColor::from_code(208)),
+        "Black" => Some(AnsiColor::from_code(8)),
+        "Blue" => Some(AnsiColor::from_code(27)),
+        "Green" => Some(AnsiColor::from_code(106)),
+        _ => None,
     }
 }
 
-impl Flower for ACNHRose {
-    type Genome = MendelianGenotype;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ACNHRose(pub Genotype);
 
-    fn info(&self) -> FlowerData {
+impl Flower for ACNHRose {
+    fn info() -> FlowerData {
+        let gene_print = vec![GeneType::Mendelian; 4];
         FlowerData::new(
-            String::from_str("ACNH Rose").expect("Could not generate flower data for ACNH Rose"),
-            4
+            "Rose (acnh)".to_string(),
+            gene_print,
+            FlowerType::ACNH(ACNHFlowerType::Rose),
         )
     }
 
-    fn new(genes: Vec<u8>) -> Option<Self>
-            where Self: Sized {
-        if let Some(genotype) = MendelianGenotype::new(genes) {
-            Some(Self {
-                genotype
-            })
-        } else {
-            None
-        }
-    }
-
-    fn new_random() -> Self
-            where Self: Sized {
-        Self {
-            genotype: MendelianGenotype::random(Self::GENOTYPE_LENGTH)
-        }
-    }
-
-    fn genotype(&self) -> &Self::Genome {
-        &self.genotype
+    fn genotype(&self) -> Genotype {
+        self.0.clone()
     }
 
     fn phenotype(&self, flower_context: &FlowerContext) -> Phenotype {
-        let index = self.genotype.as_index();
-        let string = flower_context
-            .get_phenotype_string(Self::FLOWER_TYPE, index)
-            .expect("Could not get phenotype");
-        let color = ACNHRose::get_color(string.as_str()).expect("Could not get rose color");
-        
-        let rose_blueprint = TextBlueprint::new().with_text_color(color).to_owned();
-        Phenotype::new(rose_blueprint, '@')
+        let color_string = flower_context
+            .get_phenotype_string(
+                Self::info().flower_type(),
+                self.0
+                    .into_index()
+                    .expect("could not get color index for acnh rose"),
+            )
+            .expect("could not get color for acnh rose");
+        let color =
+            get_acnh_flower_color(&color_string).expect("could not get ansi color for acnh rose");
+        let blueprint = TextBlueprint::new().with_text_color(color).to_owned();
+        Phenotype::new(blueprint, '@')
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ACNHMum(pub Genotype);
+
+impl Flower for ACNHMum {
+    fn info() -> FlowerData {
+        let gene_print = vec![GeneType::Mendelian; 3];
+        FlowerData::new(
+            "Mum (acnh)".to_string(),
+            gene_print,
+            FlowerType::ACNH(ACNHFlowerType::Mum),
+        )
+    }
+
+    fn genotype(&self) -> Genotype {
+        self.0.clone()
+    }
+
+    fn phenotype(&self, flower_context: &FlowerContext) -> Phenotype {
+        let color_string = flower_context
+            .get_phenotype_string(
+                Self::info().flower_type(),
+                self.0
+                    .into_index()
+                    .expect("could not get color index for acnh mum"),
+            )
+            .expect("could not get color for acnh mum");
+        let color =
+            get_acnh_flower_color(&color_string).expect("could not get ansi color for acnh mum");
+        let blueprint = TextBlueprint::new().with_text_color(color).to_owned();
+        Phenotype::new(blueprint, '⚛')
+    }
+}

@@ -1,4 +1,4 @@
-use crate::genetics::{Genotype, MendelianGenotype};
+use crate::genetics::{GeneType, Genotype};
 use crate::terminal::{AnsiColor, AnsiEffect, TextBlueprint};
 
 use serde::Deserialize;
@@ -8,7 +8,20 @@ use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::{self, Path};
+use std::rc::Rc;
 
+#[derive(Debug, Clone, Copy)]
+pub enum ACNHFlowerType {
+    Rose,
+    Mum,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum FlowerType {
+    ACNH(ACNHFlowerType),
+}
+
+#[derive(Debug, Clone)]
 pub struct Phenotype {
     blueprint: TextBlueprint,
     character: char,
@@ -27,16 +40,19 @@ impl Phenotype {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct FlowerData {
     name: String,
-    genotype_length: u8,
+    flower_type: FlowerType,
+    gene_print: Vec<GeneType>,
 }
 
 impl FlowerData {
-    pub fn new(name: String, genotype_length: u8) -> Self {
+    pub fn new(name: String, gene_print: Vec<GeneType>, flower_type: FlowerType) -> Self {
         Self {
             name,
-            genotype_length,
+            flower_type,
+            gene_print,
         }
     }
 
@@ -44,37 +60,47 @@ impl FlowerData {
         self.name.clone()
     }
 
-    pub fn genotype_length(&self) -> u8 {
-        self.genotype_length
+    pub fn gene_print(&self) -> Vec<GeneType> {
+        self.gene_print.clone()
+    }
+
+    pub fn flower_type(&self) -> FlowerType {
+        self.flower_type
     }
 }
 
 pub trait Flower {
-    type Genome: Genotype;
-
-    fn new(genes: Vec<u8>) -> Option<Self>
+    fn info() -> FlowerData
     where
         Self: Sized;
 
-    fn new_random() -> Self
-    where
-        Self: Sized;
-
-    fn info(&self) -> FlowerData;
-    fn genotype(&self) -> &Self::Genome;
+    fn genotype(&self) -> Genotype;
     fn phenotype(&self, flower_context: &FlowerContext) -> Phenotype;
     fn to_string(&self, flower_context: &FlowerContext) -> String {
         self.phenotype(flower_context).to_string()
     }
+
+    fn can_cross(&self, other: &Self) -> bool
+    where
+        Self: Sized,
+    {
+        self.genotype().can_cross(&other.genotype())
+    }
+
+    fn cross(&self, other: &Self) -> Genotype
+    where
+        Self: Sized,
+    {
+        self.genotype()
+            .cross_with(&other.genotype())
+            .expect("Couldn't cross-breed flowers...")
+    }
 }
 
-pub enum ACNHFlower {
-    Rose,
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ACNHPhenotypes {
     acnh_rose: Vec<String>,
+    acnh_mum: Vec<String>,
 }
 
 impl ACNHPhenotypes {
@@ -83,17 +109,15 @@ impl ACNHPhenotypes {
         Ok(obj)
     }
 
-    pub fn get_color(&self, flower_type: ACNHFlower, index: usize) -> Option<String> {
+    pub fn get_color(&self, flower_type: ACNHFlowerType, index: usize) -> Option<String> {
         match flower_type {
-            ACNHFlower::Rose => self.acnh_rose.get(index).cloned(),
+            ACNHFlowerType::Rose => self.acnh_rose.get(index).cloned(),
+            ACNHFlowerType::Mum => self.acnh_mum.get(index).cloned(),
         }
     }
 }
 
-pub enum FlowerType {
-    ACNHFlowerType(ACNHFlower),
-}
-
+#[derive(Debug, Clone)]
 pub struct FlowerContext {
     acnh_phenotypes: ACNHPhenotypes,
 }
@@ -107,19 +131,7 @@ impl FlowerContext {
 
     pub fn get_phenotype_string(&self, flower_type: FlowerType, index: usize) -> Option<String> {
         match flower_type {
-            FlowerType::ACNHFlowerType(f) => self.acnh_phenotypes.get_color(f, index),
+            FlowerType::ACNH(f) => self.acnh_phenotypes.get_color(f, index),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::flowers::acnh_flowers::ACNHRose;
-
-    use super::*;
-
-    #[test]
-    fn test_roses() {
-        
     }
 }

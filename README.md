@@ -8,3 +8,5 @@ Ever since my computer broke, I've been super into Animal Crossing New Horizons,
 I like rust :)
 ## What do I even do with this?
 Hopefully I remember to change the readme when the tui is complete with controls, but what I'm thinking is being able to plant flowers on a grid, moving a cursor around with arrow keys, picking up and putting down flowers, watering flowers, and other things. The main idea is to have a completely terminal-based and grid-based game where you can plant flowers. I will probably make a save/load feature too.
+## The code
+Yeah I'm really sorry if you look in the code as any form of biology nerd as I am not one. I dont know allele from gene or genotype from genome. I just used whatever name I thought worked in my brain.

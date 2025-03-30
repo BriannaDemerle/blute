@@ -1,165 +1,352 @@
-use rand::{distr::Uniform, prelude::*};
+use std::{rc::Rc, vec::IntoIter};
 
-/// The trait for anything that can cross-breed
-pub trait Genotype {
-    type Allele;
+use rand::{distr::Uniform, prelude::*, rng};
 
-    fn new(genes: Vec<Self::Allele>) -> Option<Self>
-    where
-        Self: Sized;
-
-    fn length(&self) -> usize;
-
-    fn cross(&self, other: &Self) -> Option<Self>
-    where
-        Self: Sized;
-
-    fn as_index(&self) -> usize;
-}
-
-/// Represents a 0, 1, or 2. Useful for Mendelian Genotypes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Trit {
-    trit: u8,
+pub enum GeneType {
+    Mendelian,
+    Bloodlike,
+    Quadruplet,
 }
 
-impl Trit {
-    pub fn new(trit: u8) -> Option<Self> {
-        if trit > 2 { None } else { Some(Self { trit }) }
+impl GeneType {
+    pub fn get_random(&self, rng: &mut ThreadRng) -> Gene {
+        Gene::random(*self, rng)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gene {
+    Mendelian(MendelianGene),
+    Bloodlike(BloodlikeGene),
+    Quadruplet(QuadrupletGene),
+}
+
+impl Gene {
+    pub fn random(gene_type: GeneType, rng: &mut ThreadRng) -> Gene {
+        match gene_type {
+            GeneType::Mendelian => Self::Mendelian(MendelianGene::random(rng)),
+            GeneType::Bloodlike => Self::Bloodlike(BloodlikeGene::random(rng)),
+            GeneType::Quadruplet => Self::Quadruplet(QuadrupletGene::random(rng)),
+        }
     }
 
-    fn new_unchecked(trit: u8) -> Self {
-        Self { trit }
+    pub fn gene_type(&self) -> GeneType {
+        match self {
+            Gene::Mendelian(_) => GeneType::Mendelian,
+            Gene::Bloodlike(_) => GeneType::Mendelian,
+            Gene::Quadruplet(_) => GeneType::Quadruplet,
+        }
+    }
+
+    pub fn cross_with(&self, other: &Self, rng: &mut ThreadRng) -> Option<Self> {
+        match self {
+            Gene::Mendelian(g) => {
+                if let Gene::Mendelian(o) = other {
+                    Some(Gene::Mendelian(g.cross(o, rng)))
+                } else {
+                    None
+                }
+            }
+            Gene::Bloodlike(g) => {
+                if let Gene::Bloodlike(o) = other {
+                    Some(Gene::Bloodlike(g.cross(o, rng)))
+                } else {
+                    None
+                }
+            }
+            Gene::Quadruplet(g) => {
+                if let Gene::Quadruplet(o) = other {
+                    Some(Gene::Quadruplet(g.cross(o, rng)))
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    /// Only Some for Mendelian genes
+    pub fn into_usize(&self) -> Option<usize> {
+        if let Self::Mendelian(m) = *self {
+            Some(m.into_usize())
+        } else {
+            None
+        }
+    }
+}
+
+/// Boring genes
+/// AA Aa aa
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MendelianGene {
+    HomozygousRecessive,
+    Heterozygous,
+    HomozygousDominant,
+}
+
+impl MendelianGene {
+    pub const CHOOSE_TABLE: [MendelianGene; 4] = [
+        MendelianGene::Heterozygous,
+        MendelianGene::Heterozygous,
+        MendelianGene::HomozygousDominant,
+        MendelianGene::HomozygousRecessive,
+    ];
+
+    pub fn into_usize(&self) -> usize {
+        match self {
+            Self::HomozygousDominant => 2,
+            Self::Heterozygous => 1,
+            Self::HomozygousRecessive => 0,
+        }
     }
 
     pub fn from_bools(bools: [bool; 2]) -> Self {
         match bools {
-            [true, true] => Self::new_unchecked(2),
-            [false, false] => Self::new_unchecked(0),
-            _ => Self::new_unchecked(1),
+            [true, true] => Self::HomozygousDominant,
+            [false, false] => Self::HomozygousRecessive,
+            _ => Self::Heterozygous,
         }
     }
 
-    pub fn as_bools(&self) -> [bool; 2] {
-        match self.trit {
-            0 => [false, false],
-            1 => [true, false],
-            2 => [true, true],
-            _ => panic!("Trit has invalid value..."),
+    pub fn to_bools(&self) -> [bool; 2] {
+        match self {
+            MendelianGene::HomozygousDominant => [true, true],
+            MendelianGene::Heterozygous => [true, false],
+            MendelianGene::HomozygousRecessive => [false, false],
         }
     }
 
-    pub fn cross(&self, other: Trit, rng: &mut ThreadRng) -> Trit {
-        let b1 = *self.as_bools().choose(rng).unwrap();
-        let b2 = *other.as_bools().choose(rng).unwrap();
-        Trit::from_bools([b1, b2])
-    }
-}
-
-/// Represents the genome of a plant with only two alleles for each gene
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MendelianGenotype {
-    genes: Vec<Trit>,
-}
-
-impl FromIterator<Trit> for MendelianGenotype {
-    fn from_iter<T: IntoIterator<Item = Trit>>(iter: T) -> Self {
-        Self {
-            genes: iter.into_iter().collect(),
-        }
-    }
-}
-
-impl MendelianGenotype {
-    pub fn new(genes: Vec<u8>) -> Option<Self> {
-        genes
-            .iter()
-            .map(|&g| Trit::new(g))
-            .collect::<Option<Vec<Trit>>>()
-            .map(|trits| Self { genes: trits })
-    }
-
-    pub fn random(length: u8) -> Self {
-        let mut rng = rand::rng();
-        let trit_distr = Uniform::new_inclusive(0, 2).unwrap();
-        let trits = (&mut rng)
-            .sample_iter(trit_distr)
-            .take(length as usize)
-            .collect();
-        Self::new(trits).unwrap()
-    }
-
-    pub fn cross(&self, other: &MendelianGenotype) -> Option<Self> {
-        let mut rng = rand::rng();
-
-        if self.genes.len() != other.genes.len() {
-            None
-        } else {
-            Some(
-                self.genes
-                    .iter()
-                    .zip(other.genes.iter())
-                    .map(|(&t1, &t2)| t1.cross(t2, &mut rng))
-                    .collect(),
-            )
-        }
-    }
-
-    pub fn as_u8_vec(&self) -> Vec<u8> {
-        self.genes.iter().map(|t| t.trit).collect()
-    }
-}
-
-impl Genotype for MendelianGenotype {
-    type Allele = u8;
-
-    fn new(genes: Vec<Self::Allele>) -> Option<Self>
+    fn random(rng: &mut ThreadRng) -> Self
     where
         Self: Sized,
     {
-        MendelianGenotype::new(genes)
-    }
-    fn cross(&self, other: &Self) -> Option<Self> {
-        self.cross(other)
-    }
-
-    fn length(&self) -> usize {
-        self.genes.len()
+        *Self::CHOOSE_TABLE
+            .choose(rng)
+            .expect("Could not choose random Mendelian Gene")
     }
 
-    fn as_index(&self) -> usize {
-        self.genes
-            .iter()
-            .rev()
-            .zip(0u32..)
-            .map(|(t, p)| t.trit as usize * 3usize.pow(p))
-            .reduce(|a, b| a + b)
-            .unwrap()
+    fn cross(&self, other: &Self, rng: &mut ThreadRng) -> Self
+    where
+        Self: Sized,
+    {
+        let b1 = *self
+            .to_bools()
+            .choose(rng)
+            .expect("Could not choose random bool");
+        let b2 = *other
+            .to_bools()
+            .choose(rng)
+            .expect("Could not choose random bool");
+        Self::from_bools([b1, b2])
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BloodlikeAllele {
+    AntigenA,
+    AntigenB,
+    NoAntigen,
+}
 
-    #[test]
-    fn cross_trits() {
-        let tt = Trit::new(2).expect("tt failed");
-        let ff = Trit::new(0).expect("ff failed");
-        let tf = Trit::new(1).expect("tf failed");
+/// Blood type-esque genes
+/// IaIa Iai IbIb Ibi IaIb ii
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BloodlikeGene {
+    BloodHomozygousA,
+    BloodHeterozygousA,
+    BloodHomozygousB,
+    BloodHeterozygousB,
+    BloodAB,
+    BloodO,
+}
 
-        let mut rng = rand::rng();
+impl BloodlikeGene {
+    pub const CHOOSE_TABLE: [BloodlikeGene; 9] = [
+        BloodlikeGene::BloodHomozygousA,
+        BloodlikeGene::BloodHeterozygousA,
+        BloodlikeGene::BloodHeterozygousA,
+        BloodlikeGene::BloodHomozygousB,
+        BloodlikeGene::BloodHeterozygousB,
+        BloodlikeGene::BloodHeterozygousB,
+        BloodlikeGene::BloodAB,
+        BloodlikeGene::BloodAB,
+        BloodlikeGene::BloodO,
+    ];
 
-        assert_eq!(tt.cross(ff, &mut rng), tf, "tt cross ff didnt equal tf");
-        assert_eq!(tt.cross(tt, &mut rng), tt, "tt cross tt didnt equal tt");
-        assert_eq!(ff.cross(ff, &mut rng), ff, "ff cross ff didnt equal ff");
+    fn to_alleles(&self) -> [BloodlikeAllele; 2] {
+        match self {
+            BloodlikeGene::BloodHomozygousA => {
+                [BloodlikeAllele::AntigenA, BloodlikeAllele::AntigenA]
+            }
+            BloodlikeGene::BloodHeterozygousA => {
+                [BloodlikeAllele::AntigenA, BloodlikeAllele::NoAntigen]
+            }
+            BloodlikeGene::BloodHomozygousB => {
+                [BloodlikeAllele::AntigenB, BloodlikeAllele::AntigenB]
+            }
+            BloodlikeGene::BloodHeterozygousB => {
+                [BloodlikeAllele::AntigenB, BloodlikeAllele::NoAntigen]
+            }
+            BloodlikeGene::BloodAB => [BloodlikeAllele::AntigenA, BloodlikeAllele::AntigenB],
+            BloodlikeGene::BloodO => [BloodlikeAllele::NoAntigen, BloodlikeAllele::NoAntigen],
+        }
     }
 
-    #[test]
-    fn cross_genomes() {
-        let m1 = MendelianGenotype::new(vec![0, 0, 2, 2]).expect("m1 failed");
-        let m2 = MendelianGenotype::new(vec![2, 0, 2, 0]).expect("m2 failed");
-        let expected = MendelianGenotype::new(vec![1, 0, 2, 1]).expect("expected failed");
-        assert_eq!(m1.cross(&m2).expect("crossing failed"), expected);
+    fn from_alleles(alleles: [BloodlikeAllele; 2]) -> Self {
+        match alleles {
+            [BloodlikeAllele::AntigenA, BloodlikeAllele::AntigenA] => Self::BloodHomozygousA,
+            [BloodlikeAllele::AntigenB, BloodlikeAllele::AntigenB] => Self::BloodHomozygousB,
+            [BloodlikeAllele::AntigenA, BloodlikeAllele::AntigenB] => Self::BloodAB,
+            [BloodlikeAllele::NoAntigen, BloodlikeAllele::NoAntigen] => Self::BloodO,
+            [_, BloodlikeAllele::AntigenA] | [BloodlikeAllele::AntigenA, _] => {
+                Self::BloodHeterozygousA
+            }
+            [_, BloodlikeAllele::AntigenB] | [BloodlikeAllele::AntigenB, _] => {
+                Self::BloodHeterozygousA
+            }
+        }
+    }
+
+    fn random(rng: &mut ThreadRng) -> Self
+    where
+        Self: Sized,
+    {
+        *Self::CHOOSE_TABLE
+            .choose(rng)
+            .expect("Could not choose random bloodlike gene")
+    }
+
+    fn cross(&self, other: &Self, rng: &mut ThreadRng) -> Self
+    where
+        Self: Sized,
+    {
+        let a1 = *self
+            .to_alleles()
+            .choose(rng)
+            .expect("Could not choose random bloodlike allele");
+        let a2 = *other
+            .to_alleles()
+            .choose(rng)
+            .expect("Could not choose random bloodlike allele");
+        Self::from_alleles([a1, a2])
+    }
+}
+
+/// Fictitious (probably)
+/// AAAA AAAa AAaa Aaaa aaaa
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuadrupletGene {
+    HomozygousDominant,
+    SemihomozygousDominant,
+    Heterozygous,
+    SemihomozygousRecessive,
+    HomozygousRecessive,
+}
+
+impl QuadrupletGene {
+    pub fn to_alleles(&self) -> [bool; 4] {
+        match self {
+            QuadrupletGene::HomozygousDominant => [true, true, true, true],
+            QuadrupletGene::SemihomozygousDominant => [true, true, true, false],
+            QuadrupletGene::Heterozygous => [true, true, false, false],
+            QuadrupletGene::SemihomozygousRecessive => [true, false, false, false],
+            QuadrupletGene::HomozygousRecessive => [false, false, false, false],
+        }
+    }
+
+    pub fn from_alleles(alleles: [bool; 4]) -> Self {
+        match alleles.iter().map(|&b| b as u8).sum() {
+            0 => QuadrupletGene::HomozygousDominant,
+            1 => QuadrupletGene::SemihomozygousDominant,
+            2 => QuadrupletGene::Heterozygous,
+            3 => QuadrupletGene::SemihomozygousRecessive,
+            4 => QuadrupletGene::HomozygousRecessive,
+            _ => panic!("More than 4 booleans in [bool; 4]..."),
+        }
+    }
+
+    pub fn cross(&self, other: &Self, rng: &mut ThreadRng) -> Self
+    where
+        Self: Sized,
+    {
+        let b1s: Vec<bool> = self.to_alleles().choose_multiple(rng, 2).cloned().collect();
+        let b2s: Vec<bool> = other
+            .to_alleles()
+            .choose_multiple(rng, 2)
+            .cloned()
+            .collect();
+        let bools: Vec<bool> = b1s.iter().chain(b2s.iter()).cloned().collect();
+
+        Self::from_alleles(
+            bools
+                .as_slice()
+                .try_into()
+                .expect("Should have been 4 values"),
+        )
+    }
+
+    pub fn random(rng: &mut ThreadRng) -> Self
+    where
+        Self: Sized,
+    {
+        let bools = [
+            rng.random_bool(0.5),
+            rng.random_bool(0.5),
+            rng.random_bool(0.5),
+            rng.random_bool(0.5),
+        ];
+        Self::from_alleles(bools)
+    }
+}
+
+/// All of the genes in a flower
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Genotype {
+    genes: Vec<Gene>,
+}
+
+impl FromIterator<Gene> for Genotype {
+    fn from_iter<T: IntoIterator<Item = Gene>>(iter: T) -> Self {
+        let genes = iter.into_iter().collect();
+        Self::new(genes)
+    }
+}
+
+impl Genotype {
+    pub fn new(genes: Vec<Gene>) -> Self {
+        Genotype { genes }
+    }
+
+    pub fn new_random(gene_print: Vec<GeneType>) -> Self {
+        let mut rng = rng();
+        let genotype = gene_print.iter().map(|t| t.get_random(&mut rng)).collect();
+
+        Self { genes: genotype }
+    }
+
+    pub fn gene_print(&self) -> Vec<GeneType> {
+        self.genes.iter().map(|g| g.gene_type()).collect()
+    }
+
+    pub fn can_cross(&self, other: &Self) -> bool {
+        self.gene_print() == other.gene_print()
+    }
+
+    pub fn cross_with(&self, other: &Self) -> Option<Self> {
+        let mut rng = rng();
+        self.genes
+            .iter()
+            .zip(other.genes.iter())
+            .map(|(&g1, g2)| g1.cross_with(g2, &mut rng))
+            .collect()
+    }
+
+    /// only Some for if all Mendelian genes
+    pub fn into_index(&self) -> Option<usize> {
+        self.genes
+            .iter()
+            .enumerate()
+            .map(|(i, &g)| g.into_usize().map(|b| b * 3usize.pow(i as u32)))
+            .sum()
     }
 }
