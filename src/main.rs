@@ -1,43 +1,31 @@
 #![allow(unused)]
 
-mod board;
+mod context;
 mod flowers;
 mod genetics;
-mod terminal;
+mod ui;
 
 use std::rc::Rc;
 
-use board::Board;
+use context::Context;
 use flowers::{
     acnh_flowers::{ACNHMum, ACNHRose},
     flower::{Flower, FlowerContext},
 };
-use genetics::{Gene, Genotype};
+use genetics::{Gene, Genotype, MendelianGene};
 use getch_rs::Key;
-use terminal::{AnsiColor, AnsiEffect, KeyStack, TextBlueprint, new_keystack, refresh_with};
+use ui::board::Board;
+use ui::terminal::{AnsiColor, AnsiEffect, KeyStack, TextBlueprint, new_keystack};
 
 fn main() {
-    let mut board = Board::new(5, 5).expect("Can't have a board with a 0 width/length");
-    let (key_stack, _guard) = new_keystack();
+    let mut context = Context::new();
 
-    'running: loop {
-        let mut key_stack_mutex = key_stack.lock().unwrap();
-        if key_stack_mutex.should_quit() {
-            break 'running
+    // clear terminal
+    print!("\x1Bc");
+
+    loop {
+        if context.update() {
+            break;
         }
-        let keys =  key_stack_mutex.poll_keys();
-        if keys.len() == 0 {
-            continue;
-        }
-        for key in keys {
-            match key{
-                Key::Char('w') => board.move_cursor((0, 1)), 
-                Key::Char('a') => board.move_cursor((-1, 0)), 
-                Key::Char('s') => board.move_cursor((0, -1)), 
-                Key::Char('d') => board.move_cursor((1, 0)),
-                _ => {} 
-            }
-        }
-        board.show_board();
     }
 }

@@ -116,10 +116,7 @@ impl MendelianGene {
         }
     }
 
-    fn random(rng: &mut ThreadRng) -> Self
-    where
-        Self: Sized,
-    {
+    fn random(rng: &mut ThreadRng) -> Self {
         *Self::CHOOSE_TABLE
             .choose(rng)
             .expect("Could not choose random Mendelian Gene")
@@ -138,6 +135,24 @@ impl MendelianGene {
             .choose(rng)
             .expect("Could not choose random bool");
         Self::from_bools([b1, b2])
+    }
+
+    pub fn to_string(&self, c: char) -> String {
+        let [b1, b2] = self.to_bools();
+        let mut s = String::new();
+        if b1 {
+            s.push(c.to_ascii_uppercase());
+        } else {
+            s.push(c.to_ascii_lowercase());
+        }
+
+        if b2 {
+            s.push(c.to_ascii_uppercase());
+        } else {
+            s.push(c.to_ascii_lowercase());
+        }
+
+        s
     }
 }
 
@@ -345,8 +360,13 @@ impl Genotype {
     pub fn into_index(&self) -> Option<usize> {
         self.genes
             .iter()
+            .rev()
             .enumerate()
             .map(|(i, &g)| g.into_usize().map(|b| b * 3usize.pow(i as u32)))
             .sum()
+    }
+
+    pub fn genes(&self) -> Vec<Gene> {
+        self.genes.clone()
     }
 }

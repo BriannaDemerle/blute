@@ -1,5 +1,6 @@
-use crate::genetics::{GeneType, Genotype};
-use crate::terminal::{AnsiColor, AnsiEffect, TextBlueprint};
+use crate::flowers::acnh_flowers::{ACNHHyacinth, ACNHMum, ACNHRose};
+use crate::genetics::{Gene, GeneType, Genotype, MendelianGene};
+use crate::ui::terminal::{AnsiColor, AnsiEffect, TextBlueprint};
 
 use serde::Deserialize;
 use serde_json::de::from_reader;
@@ -10,10 +11,13 @@ use std::io::BufReader;
 use std::path::{self, Path};
 use std::rc::Rc;
 
+pub type AnyFlower = Rc<dyn Flower>;
+
 #[derive(Debug, Clone, Copy)]
 pub enum ACNHFlowerType {
     Rose,
     Mum,
+    Hyacinth,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -70,9 +74,7 @@ impl FlowerData {
 }
 
 pub trait Flower {
-    fn info() -> FlowerData
-    where
-        Self: Sized;
+    fn info(&self) -> FlowerData;
 
     fn genotype(&self) -> Genotype;
     fn phenotype(&self, flower_context: &FlowerContext) -> Phenotype;
@@ -97,10 +99,22 @@ pub trait Flower {
     }
 }
 
+impl std::fmt::Debug for dyn Flower {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Flower (info: {:?}, genotype: {:?})",
+            self.info(),
+            self.genotype()
+        )
+    }
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct ACNHPhenotypes {
     acnh_rose: Vec<String>,
     acnh_mum: Vec<String>,
+    acnh_hyacinth: Vec<String>
 }
 
 impl ACNHPhenotypes {
@@ -113,6 +127,7 @@ impl ACNHPhenotypes {
         match flower_type {
             ACNHFlowerType::Rose => self.acnh_rose.get(index).cloned(),
             ACNHFlowerType::Mum => self.acnh_mum.get(index).cloned(),
+            ACNHFlowerType::Hyacinth => self.acnh_hyacinth.get(index).cloned(),
         }
     }
 }
@@ -120,12 +135,45 @@ impl ACNHPhenotypes {
 #[derive(Debug, Clone)]
 pub struct FlowerContext {
     acnh_phenotypes: ACNHPhenotypes,
+    seeds: Vec<Vec<AnyFlower>>
 }
 
 impl FlowerContext {
+    fn acnh_seeds() -> Vec<Vec<AnyFlower>> {
+        let m_0 = Gene::Mendelian(MendelianGene::HomozygousRecessive);
+        let m_1 = Gene::Mendelian(MendelianGene::Heterozygous);
+        let m_2 = Gene::Mendelian(MendelianGene::HomozygousDominant);
+
+        vec![
+            // ACNH Roses
+            vec![
+                Rc::new(ACNHRose(Genotype::new(vec![m_2, m_0, m_0, m_1]))),
+                Rc::new(ACNHRose(Genotype::new(vec![m_0, m_0, m_1, m_0]))),
+                Rc::new(ACNHRose(Genotype::new(vec![m_0, m_2, m_0, m_0])))
+            ],
+            // ACNH Mums
+            vec![
+                Rc::new(ACNHMum(Genotype::new(vec![m_2, m_0, m_0]))),
+                Rc::new(ACNHMum(Genotype::new(vec![m_0, m_0, m_1]))),
+                Rc::new(ACNHMum(Genotype::new(vec![m_0, m_2, m_0])))
+            ],
+            // ACNH Hyacinths
+            vec![
+                Rc::new(ACNHHyacinth(Genotype::new(vec![m_2, m_0, m_1]))),
+                Rc::new(ACNHHyacinth(Genotype::new(vec![m_0, m_0, m_1]))),
+                Rc::new(ACNHHyacinth(Genotype::new(vec![m_0, m_2, m_0]))),
+            ]
+        ]
+    }
+
+    fn all_seeds() -> Vec<Vec<AnyFlower>> {
+        vec![Self::acnh_seeds()].iter().flatten().cloned().collect()
+    }
+
     pub fn new() -> Result<Self, Box<dyn Error>> {
         Ok(Self {
             acnh_phenotypes: ACNHPhenotypes::new()?,
+            seeds: Self::all_seeds()
         })
     }
 
@@ -133,5 +181,9 @@ impl FlowerContext {
         match flower_type {
             FlowerType::ACNH(f) => self.acnh_phenotypes.get_color(f, index),
         }
+    }
+
+    pub fn get_seeds(&self) -> Vec<Vec<AnyFlower>> {
+        self.seeds.clone()
     }
 }

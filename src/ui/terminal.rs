@@ -1,4 +1,6 @@
 use getch_rs::{Getch, Key, disable_echo_input};
+use std::io::StdoutLock;
+use std::thread;
 use std::vec::IntoIter;
 use std::{
     io::{Error, Write},
@@ -6,15 +8,6 @@ use std::{
     sync::{Arc, Mutex},
     thread::JoinHandle,
 };
-
-/// Clears the terminal and prints out whatever you want!
-pub fn refresh_with(text: &str) {
-    print!("\x1Bc");
-    print!("{}", text);
-    std::io::stdout()
-        .flush()
-        .expect("Couldn't flush the terminal.");
-}
 
 /// The colors that you can use for the TextBlueprint
 #[derive(Debug, Clone, Copy)]
